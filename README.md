@@ -190,14 +190,16 @@ the tool yourself, you can provide it explicitly to skip PDF discovery:
 texbridge inverse --source 'D:/Paper/chapters/intro.tex' --line 42 --pdf 'D:/Paper/main.pdf'
 ```
 
-The tool passes the folder and file to VS Code in one call and lets VS Code
-choose the window. It does not inspect which files are already open. The
-single-file fallback retains `--reuse-window` behavior.
+The tool passes `--new-window`, the folder, and the source location in one call.
+VS Code first matches an already-open project folder; otherwise it opens a new
+window instead of replacing an unrelated window. The tool does not inspect
+which files are already open. The single-file fallback retains `--reuse-window`
+behavior.
 
 ## 🔎 Known limits
 
 - Local Windows only; no WSL, SSH, or container path translation.
-- Project-window selection follows VS Code's behavior and settings; exact
+- Project-window matching follows VS Code's behavior; exact
   routing to an existing multi-root workspace is not guaranteed.
 - `doctor` checks files and paths, not SyncTeX contents or actual navigation.
 - The reported **“Sumatra must be opened independently”** issue is not yet

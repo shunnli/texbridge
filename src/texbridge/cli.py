@@ -236,7 +236,7 @@ def run(args: argparse.Namespace) -> int:
         source = checked_file(args.source, "Source file")
         pdf = checked_file(args.pdf, "PDF") if args.pdf else None
         project = find_project(source, pdf)
-        target = [str(project)] if project is not None else ["--reuse-window"]
+        target = ["--new-window", str(project)] if project is not None else ["--reuse-window"]
         argv = [str(code), *target, "--goto", f"{source}:{args.line}"]
     else:
         sumatra = executable("sumatra", args.sumatra)

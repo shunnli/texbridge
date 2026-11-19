@@ -57,7 +57,7 @@ class BridgeTests(unittest.TestCase):
                                "--source", str(self.source), "--line", "7"])
         self.assertEqual(status, 0)
         launch.assert_called_once_with([
-            str(self.code), str(self.root), "--goto", f"{self.source}:7",
+            str(self.code), "--new-window", str(self.root), "--goto", f"{self.source}:7",
         ], dry_run=False)
 
     def test_inverse_uses_explicit_pdf_directory(self):
@@ -66,7 +66,7 @@ class BridgeTests(unittest.TestCase):
                                "--source", str(self.source), "--line", "7"])
         self.assertEqual(status, 0)
         launch.assert_called_once_with([
-            str(self.code), str(self.pdf.parent), "--goto", f"{self.source}:7",
+            str(self.code), "--new-window", str(self.pdf.parent), "--goto", f"{self.source}:7",
         ], dry_run=False)
 
     def test_view_needs_no_synctex(self):

@@ -50,6 +50,25 @@ class BridgeTests(unittest.TestCase):
             str(self.code), "--reuse-window", "--goto", f"{self.source}:7",
         ], dry_run=False)
 
+    def test_inverse_opens_project_and_source_in_one_command(self):
+        (self.root / ".git").mkdir()
+        with patch.object(cli, "launch") as launch:
+            status = cli.main(["inverse", "--code", str(self.code),
+                               "--source", str(self.source), "--line", "7"])
+        self.assertEqual(status, 0)
+        launch.assert_called_once_with([
+            str(self.code), str(self.root), "--goto", f"{self.source}:7",
+        ], dry_run=False)
+
+    def test_inverse_uses_explicit_pdf_directory(self):
+        with patch.object(cli, "launch") as launch:
+            status = cli.main(["inverse", "--code", str(self.code), "--pdf", str(self.pdf),
+                               "--source", str(self.source), "--line", "7"])
+        self.assertEqual(status, 0)
+        launch.assert_called_once_with([
+            str(self.code), str(self.pdf.parent), "--goto", f"{self.source}:7",
+        ], dry_run=False)
+
     def test_view_needs_no_synctex(self):
         args = cli.parser().parse_args(["view", "--sumatra", str(self.sumatra), "--pdf", str(self.pdf)])
         with patch.object(cli, "launch") as launch:
@@ -88,6 +107,14 @@ class BridgeTests(unittest.TestCase):
         self.assertIn('--source "%f" --line %l', inverse)
         self.assertNotIn("cli.js", inverse)
         self.assertNotIn("-inverse-search", json.dumps(settings))
+
+    def test_configuration_uses_forward_slashes_in_paths(self):
+        settings, inverse = cli.configuration(self.code, self.sumatra)
+        for key in ("viewer", "synctex"):
+            arguments = settings[f"latex-workshop.view.pdf.external.{key}.args"]
+            self.assertEqual(arguments[arguments.index("--sumatra") + 1], self.sumatra.as_posix())
+        self.assertIn(self.code.as_posix(), inverse)
+        self.assertNotIn("\\", inverse)
 
     def test_gui_navigation_is_silent_on_success(self):
         with patch.object(cli, "launch") as launch, patch.object(cli, "show_dialog") as dialog:

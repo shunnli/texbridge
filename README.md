@@ -32,7 +32,7 @@ flowchart TB
     subgraph inverse ["PDF → SOURCE"]
         direction LR
         S2["SumatraPDF"] -->|"Double-click"| I("texbridge inverse")
-        I -->|"Open source at line"| V2["VS Code"]
+        I -->|"Open project + source line"| V2["VS Code"]
     end
 
     forward ~~~ inverse
@@ -49,8 +49,9 @@ flowchart TB
 
 Compile with `-synctex=1` to produce a PDF and its matching SyncTeX file.
 SumatraPDF uses SyncTeX to map between source lines and PDF positions.
-texbridge forwards navigation arguments and handles process launching; it does
-not parse SyncTeX or stay running between jumps.
+texbridge forwards navigation arguments and handles process launching. It may
+read SyncTeX input-file records to find a project folder, but does not compute
+page positions or stay running between jumps.
 
 ## 🚀 Install
 
@@ -79,7 +80,7 @@ output from your installed tool so the paths match your machine.
 Only specify paths if discovery fails or finds multiple installations:
 
 ```powershell
-texbridge config --code 'C:\Apps\VS Code\Code.exe' --sumatra 'C:\Apps\SumatraPDF\SumatraPDF.exe'
+texbridge config --code 'C:/Apps/VS Code/Code.exe' --sumatra 'C:/Apps/SumatraPDF/SumatraPDF.exe'
 ```
 
 ### 2. VS Code: `settings.json`
@@ -119,6 +120,7 @@ Keep `%PDF%`, `%TEX%`, `%LINE%`, `%f`, and `%l` exactly as shown: the applicatio
 substitute them when you navigate. The examples use automatic app discovery;
 `texbridge config` instead prints ready-to-copy settings with discovered app
 paths pinned through `--sumatra` and `--code` for predictable GUI launches.
+All generated configuration paths use `/` separators.
 
 If either application cannot find `texbridge`, replace that command with the
 full path to `texbridge.exe`. In the Sumatra command, quote the executable path:
@@ -142,7 +144,7 @@ Compile with `-synctex=1`, keeping the matching `.synctex` or `.synctex.gz` besi
 the PDF. Then check your actual PDF path:
 
 ```powershell
-texbridge doctor --pdf 'D:\Paper\main.pdf'
+texbridge doctor --pdf 'D:/Paper/main.pdf'
 ```
 
 - **Forward:** place the cursor on a source line that produces PDF text, then
@@ -168,10 +170,35 @@ to inspect arguments without launching an app.
 Use `--gui` with any command to display its output in a dialog instead of the
 terminal. It can appear before or after the subcommand.
 
+## 📂 Open the project on inverse search
+
+Inverse search tries to open a project folder together with the source line:
+
+1. Use the nearest Git root above the source file, including Git worktrees.
+2. Otherwise, look for a nearby PDF whose SyncTeX input list contains that source.
+   If all matches share one folder, open that folder (or its enclosing Git root).
+3. If no match is found or multiple folders match, open only the source file.
+
+The search checks up to five source ancestor directories and their `build`,
+`out`, and `output` folders. It is bounded, read-only, and uncached; it does not
+scan `.aux` folders. An unrelated PDF with the same filename is not enough.
+
+Sumatra's standard inverse command does not supply the PDF path. When calling
+the tool yourself, you can provide it explicitly to skip PDF discovery:
+
+```powershell
+texbridge inverse --source 'D:/Paper/chapters/intro.tex' --line 42 --pdf 'D:/Paper/main.pdf'
+```
+
+The tool passes the folder and file to VS Code in one call and lets VS Code
+choose the window. It does not inspect which files are already open. The
+single-file fallback retains `--reuse-window` behavior.
+
 ## 🔎 Known limits
 
 - Local Windows only; no WSL, SSH, or container path translation.
-- Inverse search reuses the most recently active VS Code window.
+- Project-window selection follows VS Code's behavior and settings; exact
+  routing to an existing multi-root workspace is not guaranteed.
 - `doctor` checks files and paths, not SyncTeX contents or actual navigation.
 - The reported **“Sumatra must be opened independently”** issue is not yet
   verified as fixed. Test both an independently opened Sumatra and one started

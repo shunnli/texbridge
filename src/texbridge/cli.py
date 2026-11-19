@@ -13,6 +13,7 @@ import sys
 
 from . import __version__
 from .terminal import connect_output
+from .workspace import find_project
 
 
 class BridgeError(Exception):
@@ -107,16 +108,16 @@ def configuration(code: Path, sumatra: Path) -> tuple[dict, str]:
         "latex-workshop.view.pdf.viewer": "external",
         "latex-workshop.view.pdf.external.viewer.command": "texbridge",
         "latex-workshop.view.pdf.external.viewer.args": [
-            "view", "--gui", "--sumatra", str(sumatra), "--pdf", "%PDF%",
+            "view", "--gui", "--sumatra", sumatra.as_posix(), "--pdf", "%PDF%",
         ],
         "latex-workshop.view.pdf.external.synctex.command": "texbridge",
         "latex-workshop.view.pdf.external.synctex.args": [
-            "forward", "--gui", "--sumatra", str(sumatra), "--source", "%TEX%",
+            "forward", "--gui", "--sumatra", sumatra.as_posix(), "--source", "%TEX%",
             "--line", "%LINE%", "--pdf", "%PDF%",
         ],
     }
     # %f must always be quoted, even though the literal placeholder has no spaces.
-    prefix = subprocess.list2cmdline(["texbridge", "inverse", "--gui", "--code", str(code)])
+    prefix = subprocess.list2cmdline(["texbridge", "inverse", "--gui", "--code", code.as_posix()])
     inverse = prefix + ' --source "%f" --line %l'
     return settings, inverse
 
@@ -161,8 +162,9 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--code", help="Full path to Code.exe")
         if name in {"config", "view", "forward", "doctor"}:
             command.add_argument("--sumatra", help="Full path to SumatraPDF.exe")
-        if name in {"view", "forward", "doctor"}:
-            command.add_argument("--pdf", required=name != "doctor")
+        if name in {"view", "forward", "inverse", "doctor"}:
+            command.add_argument("--pdf", required=name in {"view", "forward"},
+                                 help="PDF path (optional context for inverse project discovery)")
         if name in {"forward", "inverse"}:
             command.add_argument("--source", required=True)
             command.add_argument("--line", required=True, type=positive)
@@ -204,7 +206,7 @@ def diagnose(args: argparse.Namespace) -> int:
             print(f"[FAIL] {exc}")
             failures += 1
     print("[INFO] Checks paths only; SyncTeX contents, application settings and actual UI navigation are not verified.")
-    print("[INFO] Inverse search reuses the most recently active VS Code window.")
+    print("[INFO] Inverse search opens a discovered project folder, or falls back to a single file.")
     return 1 if failures else 0
 
 
@@ -224,6 +226,7 @@ def run(args: argparse.Namespace) -> int:
         print("Recommended manual settings: ReuseInstance = true and ReloadModifiedDocuments = true.")
         print("\n3. Compile with -synctex=1 and keep the matching synchronization file beside the PDF.")
         print("Run SyncTeX from cursor in VS Code; double-click document text in SumatraPDF for inverse search.")
+        print("Inverse search looks for a Git root or a nearby matching PDF folder; otherwise it opens only the source file.")
         print("If installation paths change, rerun config and update settings manually. No settings have been changed.")
         return 0
     if args.command == "doctor":
@@ -231,7 +234,10 @@ def run(args: argparse.Namespace) -> int:
     if args.command == "inverse":
         code = executable("code", args.code)
         source = checked_file(args.source, "Source file")
-        argv = [str(code), "--reuse-window", "--goto", f"{source}:{args.line}"]
+        pdf = checked_file(args.pdf, "PDF") if args.pdf else None
+        project = find_project(source, pdf)
+        target = [str(project)] if project is not None else ["--reuse-window"]
+        argv = [str(code), *target, "--goto", f"{source}:{args.line}"]
     else:
         sumatra = executable("sumatra", args.sumatra)
         pdf = checked_file(args.pdf, "PDF")

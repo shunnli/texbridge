@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import argparse
 import ctypes
-import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 
-from . import __version__
-from .terminal import connect_output
 from .workspace import find_project
 
 
@@ -95,37 +92,7 @@ def executable(kind: str, explicit: str | None) -> Path:
     raise BridgeError(f"Multiple {kind} installations found; select one with --{kind}:\n  {paths}")
 
 
-def bridge_entry() -> Path:
-    # Prefer this installation, not an unrelated texbridge earlier on PATH.
-    for path in (Path(sys.executable).parent / "texbridge.exe", Path(sys.argv[0])):
-        if path.name.lower() == "texbridge.exe" and path.is_file():
-            return path.resolve()
-    raise BridgeError("Installed texbridge.exe not found; run uv tool install . before texbridge config")
-
-
-def configuration(code: Path, sumatra: Path) -> tuple[dict, str]:
-    settings = {
-        "latex-workshop.view.pdf.viewer": "external",
-        "latex-workshop.view.pdf.external.viewer.command": "texbridge",
-        "latex-workshop.view.pdf.external.viewer.args": [
-            "view", "--gui", "--sumatra", sumatra.as_posix(), "--pdf", "%PDF%",
-        ],
-        "latex-workshop.view.pdf.external.synctex.command": "texbridge",
-        "latex-workshop.view.pdf.external.synctex.args": [
-            "forward", "--gui", "--sumatra", sumatra.as_posix(), "--source", "%TEX%",
-            "--line", "%LINE%", "--pdf", "%PDF%",
-        ],
-    }
-    # %f must always be quoted, even though the literal placeholder has no spaces.
-    prefix = subprocess.list2cmdline(["texbridge", "inverse", "--gui", "--code", code.as_posix()])
-    inverse = prefix + ' --source "%f" --line %l'
-    return settings, inverse
-
-
-def launch(argv: list[str], *, dry_run: bool) -> None:
-    if dry_run:
-        print(json.dumps({"argv": argv, "remove_env": ["ELECTRON_RUN_AS_NODE"]}, ensure_ascii=False, indent=2))
-        return
+def launch(argv: list[str]) -> None:
     environment = os.environ.copy()
     # A GUI process inherited from an Electron child must not run as Node.
     environment.pop("ELECTRON_RUN_AS_NODE", None)
@@ -143,94 +110,37 @@ def launch(argv: list[str], *, dry_run: bool) -> None:
         raise BridgeError(f"Failed to launch process: {exc}") from exc
 
 
+class ArgumentError(BridgeError):
+    pass
+
+
+class BridgeParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ArgumentError(f"{message}\nSee README.md for configuration instructions.")
+
+
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(description="VS Code / SumatraPDF SyncTeX bridge; never edits application settings", allow_abbrev=False)
-    root.add_argument("--version", action="version", version=__version__)
-    root.add_argument("--gui", action="store_true", help="Show output and errors in a dialog instead of the terminal")
+    root = BridgeParser(prog="texbridge", add_help=False, allow_abbrev=False)
+    # Accepted for compatibility with existing application settings.
+    root.add_argument("--gui", action="store_true")
     commands = root.add_subparsers(dest="command", required=True)
-    for name, help_text in (
-        ("config", "Print manual configuration instructions"),
-        ("view", "Open a PDF"),
-        ("forward", "Jump from source to PDF"),
-        ("inverse", "Jump from PDF to source"),
-        ("doctor", "Check application paths and synchronization files (read-only)"),
-    ):
-        command = commands.add_parser(name, help=help_text, allow_abbrev=False)
-        command.add_argument("--gui", action="store_true", default=argparse.SUPPRESS,
-                             help="Show output and errors in a dialog instead of the terminal")
-        if name in {"config", "inverse", "doctor"}:
-            command.add_argument("--code", help="Full path to Code.exe")
-        if name in {"config", "view", "forward", "doctor"}:
-            command.add_argument("--sumatra", help="Full path to SumatraPDF.exe")
-        if name in {"view", "forward", "inverse", "doctor"}:
-            command.add_argument("--pdf", required=name in {"view", "forward"},
-                                 help="PDF path (optional context for inverse project discovery)")
+    for name in ("view", "forward", "inverse"):
+        command = commands.add_parser(name, add_help=False, allow_abbrev=False)
+        command.add_argument("--gui", action="store_true", default=argparse.SUPPRESS)
+        if name == "inverse":
+            command.add_argument("--code")
+        else:
+            command.add_argument("--sumatra")
+        command.add_argument("--pdf", required=name in {"view", "forward"})
         if name in {"forward", "inverse"}:
             command.add_argument("--source", required=True)
             command.add_argument("--line", required=True, type=positive)
-        if name in {"view", "forward", "inverse"}:
-            command.add_argument("--dry-run", action="store_true", help="Print arguments without launching a process")
     return root
-
-
-def diagnose(args: argparse.Namespace) -> int:
-    failures = 0
-    for kind in ("code", "sumatra"):
-        try:
-            print(f"[OK] {kind}: {executable(kind, getattr(args, kind))}")
-        except BridgeError as exc:
-            print(f"[FAIL] {exc}")
-            failures += 1
-    try:
-        print(f"[OK] bridge: {bridge_entry()}")
-    except BridgeError as exc:
-        print(f"[FAIL] {exc}")
-        failures += 1
-    if args.pdf:
-        try:
-            pdf = checked_file(args.pdf, "PDF")
-            print(f"[OK] PDF: {pdf}")
-            sync = [pdf.with_suffix(suffix) for suffix in (".synctex", ".synctex.gz")]
-            present = [path for path in sync if path.is_file()]
-            if not present:
-                raise BridgeError("No matching .synctex or .synctex.gz beside the PDF; check that compilation enables -synctex=1")
-            for path in present:
-                if path.stat().st_size == 0:
-                    raise BridgeError(f"Synchronization file is empty: {path}")
-                print(f"[OK] SyncTeX: {path}")
-                if path.stat().st_mtime < pdf.stat().st_mtime:
-                    print("[WARN] SyncTeX is older than the PDF; timestamps suggest possible staleness but cannot prove a mismatch")
-            if len(present) > 1:
-                print("[WARN] Both compressed and uncompressed SyncTeX files exist; check that both belong to the current build")
-        except BridgeError as exc:
-            print(f"[FAIL] {exc}")
-            failures += 1
-    print("[INFO] Checks paths only; SyncTeX contents, application settings and actual UI navigation are not verified.")
-    print("[INFO] Inverse search opens a discovered project folder, or falls back to a single file.")
-    return 1 if failures else 0
 
 
 def run(args: argparse.Namespace) -> int:
     if os.name != "nt":
         raise BridgeError("This version supports local VS Code and SumatraPDF on Windows only")
-    if args.command == "config":
-        code = executable("code", args.code)
-        sumatra = executable("sumatra", args.sumatra)
-        settings, inverse = configuration(code, sumatra)
-        print("1. VS Code: run Preferences: Open User Settings (JSON). Merge these fields into the existing object; preserve other settings.")
-        print(json.dumps(settings, ensure_ascii=False, indent=2))
-        print("\n2. SumatraPDF: paste this entire line into the inverse-search command-line setting:")
-        print(inverse)
-        print("\nIf either application cannot find texbridge, replace it with the full path to texbridge.exe; quote that path in the Sumatra command.")
-        print("\nIf the inverse-search option is hidden, manually set EnableTeXEnhancements = true in Advanced Settings.")
-        print("Recommended manual settings: ReuseInstance = true and ReloadModifiedDocuments = true.")
-        print("\n3. Compile with -synctex=1 and keep the matching synchronization file beside the PDF.")
-        print("Run SyncTeX from cursor in VS Code; double-click document text in SumatraPDF for inverse search.")
-        print("Inverse search looks for a Git root or a nearby matching PDF folder; otherwise it opens only the source file.")
-        print("If installation paths change, rerun config and update settings manually. No settings have been changed.")
-        return 0
-    if args.command == "doctor":
-        return diagnose(args)
     if args.command == "inverse":
         code = executable("code", args.code)
         source = checked_file(args.source, "Source file")
@@ -246,17 +156,8 @@ def run(args: argparse.Namespace) -> int:
             source = checked_file(args.source, "Source file")
             argv += ["-forward-search", str(source), str(args.line)]
         argv.append(str(pdf))
-    launch(argv, dry_run=args.dry_run)
+    launch(argv)
     return 0
-
-
-def console_main(argv: list[str]) -> int:
-    args = parser().parse_args(argv)
-    try:
-        return run(args)
-    except (BridgeError, OSError) as exc:
-        print(f"texbridge: {exc}", file=sys.stderr)
-        return 1
 
 
 def show_dialog(message: str, status: int) -> None:
@@ -267,21 +168,13 @@ def show_dialog(message: str, status: int) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """One entry point with terminal output by default and optional dialogs."""
+    """Run navigation silently, reporting invalid arguments and failures in a dialog."""
     arguments = list(sys.argv[1:] if argv is None else argv)
-    # Select output routing before parsing so argument errors are visible too.
-    if "--gui" not in arguments and connect_output():
-        return console_main(arguments)
-
-    import io
-    from contextlib import redirect_stderr, redirect_stdout
-
-    output = io.StringIO()
-    with redirect_stdout(output), redirect_stderr(output):
-        try:
-            status = console_main(arguments)
-        except SystemExit as exc:
-            status = int(exc.code or 0)
-    if output.getvalue():
-        show_dialog(output.getvalue(), status)
-    return status
+    try:
+        return run(parser().parse_args(arguments))
+    except ArgumentError as exc:
+        show_dialog(f"texbridge: {exc}", 2)
+        return 2
+    except (BridgeError, OSError) as exc:
+        show_dialog(f"texbridge: {exc}", 1)
+        return 1

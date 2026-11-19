@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "texbridge"
+version = "0.1.0"
+description = "A small VS Code and SumatraPDF SyncTeX bridge"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+texbridge = "texbridge.cli:main"
+
+[project.gui-scripts]
+texbridgew = "texbridge.cli:gui_main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/texbridge"]

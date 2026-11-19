@@ -55,10 +55,9 @@ not parse SyncTeX or stay running between jumps.
 ## 🚀 Install
 
 Requires Windows, Python 3.11+, uv, Git, VS Code with LaTeX Workshop, and SumatraPDF.
-Replace `OWNER/REPOSITORY` with this project's GitHub repository path:
 
 ```powershell
-uv tool install "git+https://github.com/OWNER/REPOSITORY.git"
+uv tool install "git+https://github.com/shunnli/texbridge.git"
 texbridge config
 ```
 
@@ -85,17 +84,17 @@ texbridge config --code 'C:\Apps\VS Code\Code.exe' --sumatra 'C:\Apps\SumatraPDF
 
 ### 2. VS Code: `settings.json`
 
-Merge these fields into your existing settings object. Replace
-`path/to/texbridge.exe` with your installed executable's absolute path:
+Merge these fields into your existing settings object. These examples assume
+`texbridge` is available on PATH:
 
 ```json
 {
   "latex-workshop.view.pdf.viewer": "external",
-  "latex-workshop.view.pdf.external.viewer.command": "path/to/texbridge.exe",
+  "latex-workshop.view.pdf.external.viewer.command": "texbridge",
   "latex-workshop.view.pdf.external.viewer.args": [
     "view", "--gui", "--pdf", "%PDF%"
   ],
-  "latex-workshop.view.pdf.external.synctex.command": "path/to/texbridge.exe",
+  "latex-workshop.view.pdf.external.synctex.command": "texbridge",
   "latex-workshop.view.pdf.external.synctex.args": [
     "forward", "--gui", "--source", "%TEX%", "--line", "%LINE%", "--pdf", "%PDF%"
   ]
@@ -107,20 +106,23 @@ settings can override user settings, so keep matching entries consistent.
 
 ### 3. SumatraPDF: `SumatraPDF-settings.txt`
 
-Add or update these top-level entries. Replace `path/to/texbridge.exe` with
-your installed executable's absolute path:
+Add or update these top-level entries:
 
 ```text
 EnableTeXEnhancements = true
 ReuseInstance = true
 ReloadModifiedDocuments = true
-InverseSearchCmdLine = "path/to/texbridge.exe" inverse --gui --source "%f" --line %l
+InverseSearchCmdLine = texbridge inverse --gui --source "%f" --line %l
 ```
 
 Keep `%PDF%`, `%TEX%`, `%LINE%`, `%f`, and `%l` exactly as shown: the applications
 substitute them when you navigate. The examples use automatic app discovery;
 `texbridge config` instead prints ready-to-copy settings with discovered app
 paths pinned through `--sumatra` and `--code` for predictable GUI launches.
+
+If either application cannot find `texbridge`, replace that command with the
+full path to `texbridge.exe`. In the Sumatra command, quote the executable path:
+`"path/to/texbridge.exe" inverse --gui --source "%f" --line %l`.
 
 Both applications use the same `texbridge.exe` entry point. `--gui` displays
 output and errors in a dialog; successful navigation is silent. Omit it for

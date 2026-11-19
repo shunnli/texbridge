@@ -79,10 +79,11 @@ class BridgeTests(unittest.TestCase):
                 cli.launch([str(self.code)], dry_run=False)
 
     def test_config_quotes_inverse_placeholder_and_uses_gui_option(self):
-        settings, inverse = cli.configuration(self.bridge, self.code, self.sumatra)
-        self.assertIn(str(self.bridge), inverse)
+        settings, inverse = cli.configuration(self.code, self.sumatra)
+        self.assertTrue(inverse.startswith("texbridge inverse --gui "))
         self.assertIn("inverse --gui", inverse)
         for key in ("viewer", "synctex"):
+            self.assertEqual(settings[f"latex-workshop.view.pdf.external.{key}.command"], "texbridge")
             self.assertIn("--gui", settings[f"latex-workshop.view.pdf.external.{key}.args"])
         self.assertIn('--source "%f" --line %l', inverse)
         self.assertNotIn("cli.js", inverse)

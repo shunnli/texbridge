@@ -102,21 +102,21 @@ def bridge_entry() -> Path:
     raise BridgeError("Installed texbridge.exe not found; run uv tool install . before texbridge config")
 
 
-def configuration(bridge: Path, code: Path, sumatra: Path) -> tuple[dict, str]:
+def configuration(code: Path, sumatra: Path) -> tuple[dict, str]:
     settings = {
         "latex-workshop.view.pdf.viewer": "external",
-        "latex-workshop.view.pdf.external.viewer.command": str(bridge),
+        "latex-workshop.view.pdf.external.viewer.command": "texbridge",
         "latex-workshop.view.pdf.external.viewer.args": [
             "view", "--gui", "--sumatra", str(sumatra), "--pdf", "%PDF%",
         ],
-        "latex-workshop.view.pdf.external.synctex.command": str(bridge),
+        "latex-workshop.view.pdf.external.synctex.command": "texbridge",
         "latex-workshop.view.pdf.external.synctex.args": [
             "forward", "--gui", "--sumatra", str(sumatra), "--source", "%TEX%",
             "--line", "%LINE%", "--pdf", "%PDF%",
         ],
     }
     # %f must always be quoted, even though the literal placeholder has no spaces.
-    prefix = subprocess.list2cmdline([str(bridge), "inverse", "--gui", "--code", str(code)])
+    prefix = subprocess.list2cmdline(["texbridge", "inverse", "--gui", "--code", str(code)])
     inverse = prefix + ' --source "%f" --line %l'
     return settings, inverse
 
@@ -214,11 +214,12 @@ def run(args: argparse.Namespace) -> int:
     if args.command == "config":
         code = executable("code", args.code)
         sumatra = executable("sumatra", args.sumatra)
-        settings, inverse = configuration(bridge_entry(), code, sumatra)
+        settings, inverse = configuration(code, sumatra)
         print("1. VS Code: run Preferences: Open User Settings (JSON). Merge these fields into the existing object; preserve other settings.")
         print(json.dumps(settings, ensure_ascii=False, indent=2))
         print("\n2. SumatraPDF: paste this entire line into the inverse-search command-line setting:")
         print(inverse)
+        print("\nIf either application cannot find texbridge, replace it with the full path to texbridge.exe; quote that path in the Sumatra command.")
         print("\nIf the inverse-search option is hidden, manually set EnableTeXEnhancements = true in Advanced Settings.")
         print("Recommended manual settings: ReuseInstance = true and ReloadModifiedDocuments = true.")
         print("\n3. Compile with -synctex=1 and keep the matching synchronization file beside the PDF.")

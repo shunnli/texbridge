@@ -9,12 +9,17 @@ import sys
 from typing import TextIO
 
 
-def _attach_terminal(kernel) -> None:
+def _attach_terminal(kernel: ctypes.WinDLL) -> None:
     if kernel.AttachConsole(0xFFFFFFFF):
         return
+
     # Installed Windows launchers can insert a GUI process between pythonw and
     # the shell. Follow that ancestry rather than allocating a new console.
     class ProcessEntry(ctypes.Structure):
+        size: int
+        pid: int
+        parent: int
+
         _fields_ = [
             ("size", wintypes.DWORD), ("usage", wintypes.DWORD),
             ("pid", wintypes.DWORD), ("heap", ctypes.c_size_t),
@@ -88,8 +93,11 @@ def connect_output() -> bool:
         duplicate = wintypes.HANDLE()
         if not kernel.DuplicateHandle(process, handle, process, ctypes.byref(duplicate), 0, False, 2):
             return None
+        duplicate_handle = duplicate.value
+        if duplicate_handle is None:
+            return None
         try:
-            fd = msvcrt.open_osfhandle(duplicate.value, os.O_WRONLY | os.O_BINARY)
+            fd = msvcrt.open_osfhandle(duplicate_handle, os.O_WRONLY | os.O_BINARY)
         except OSError:
             kernel.CloseHandle(duplicate)
             return None
@@ -99,7 +107,7 @@ def connect_output() -> bool:
             os.close(fd)
             return None
 
-    streams = {"stdout": sys.stdout, "stderr": sys.stderr}
+    streams: dict[str, TextIO | None] = {"stdout": sys.stdout, "stderr": sys.stderr}
     for name, number in (("stdout", -11), ("stderr", -12)):
         if streams[name] is None:
             streams[name] = stream(number)
@@ -108,8 +116,10 @@ def connect_output() -> bool:
         for name, number in (("stdout", -11), ("stderr", -12)):
             if streams[name] is None:
                 streams[name] = stream(number)
-    if all(value is None for value in streams.values()):
+    stdout = streams["stdout"] or streams["stderr"]
+    stderr = streams["stderr"] or streams["stdout"]
+    if stdout is None or stderr is None:
         return False
-    sys.stdout = streams["stdout"] or streams["stderr"]
-    sys.stderr = streams["stderr"] or streams["stdout"]
+    sys.stdout = stdout
+    sys.stderr = stderr
     return True

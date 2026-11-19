@@ -10,11 +10,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
 
-[project.scripts]
-texbridge = "texbridge.cli:main"
-
 [project.gui-scripts]
-texbridgew = "texbridge.cli:gui_main"
+texbridge = "texbridge.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/texbridge"]

@@ -78,13 +78,42 @@ class BridgeTests(unittest.TestCase):
             with self.assertRaisesRegex(cli.BridgeError, "Failed to launch"):
                 cli.launch([str(self.code)], dry_run=False)
 
-    def test_config_quotes_inverse_placeholder_and_uses_gui_entry(self):
-        windowless = self.file("tools/texbridgew.exe")
+    def test_config_quotes_inverse_placeholder_and_uses_gui_option(self):
         settings, inverse = cli.configuration(self.bridge, self.code, self.sumatra)
-        self.assertIn(str(windowless), inverse)
+        self.assertIn(str(self.bridge), inverse)
+        self.assertIn("inverse --gui", inverse)
+        for key in ("viewer", "synctex"):
+            self.assertIn("--gui", settings[f"latex-workshop.view.pdf.external.{key}.args"])
         self.assertIn('--source "%f" --line %l', inverse)
         self.assertNotIn("cli.js", inverse)
         self.assertNotIn("-inverse-search", json.dumps(settings))
+
+    def test_gui_navigation_is_silent_on_success(self):
+        with patch.object(cli, "launch") as launch, patch.object(cli, "show_dialog") as dialog:
+            status = cli.main(["inverse", "--gui", "--code", str(self.code),
+                               "--source", str(self.source), "--line", "1"])
+        self.assertEqual(status, 0)
+        launch.assert_called_once()
+        dialog.assert_not_called()
+
+    def test_gui_reports_parse_and_runtime_errors(self):
+        for arguments, expected_status in (
+            (["inverse", "--gui"], 2),
+            (["--gui", "inverse", "--code", str(self.code),
+              "--source", str(self.root / "missing.tex"), "--line", "1"], 1),
+        ):
+            with self.subTest(arguments=arguments), patch.object(cli, "show_dialog") as dialog:
+                self.assertEqual(cli.main(arguments), expected_status)
+                dialog.assert_called_once()
+                self.assertEqual(dialog.call_args.args[1], expected_status)
+
+    def test_gui_dry_run_displays_arguments_without_launching(self):
+        with patch.object(cli.subprocess, "Popen") as spawn, patch.object(cli, "show_dialog") as dialog:
+            status = cli.main(["view", "--gui", "--dry-run", "--sumatra", str(self.sumatra),
+                               "--pdf", str(self.pdf)])
+        self.assertEqual(status, 0)
+        spawn.assert_not_called()
+        self.assertEqual(json.loads(dialog.call_args.args[0])["argv"][-1], str(self.pdf))
 
     def test_config_only_prints_and_does_not_spawn_or_write(self):
         args = cli.parser().parse_args(["config", "--code", str(self.code), "--sumatra", str(self.sumatra)])

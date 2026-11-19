@@ -6,6 +6,19 @@ Automatic app discovery, simple configuration, and no background service.
 **Your settings stay yours:** texbridge only prints configuration instructions.
 It never edits application settings or manages auxiliary files.
 
+## 🧼 Stateless by design
+
+- **No saved configuration, discovery cache, or log files.** texbridge does not
+  persist application state between calls.
+- **No background service.** Each invocation handles one command and exits.
+- **`config` only prints to the terminal.** Even `--code` and `--sumatra` are not
+  remembered; copy the generated settings into the two applications yourself.
+- **Fresh discovery when needed.** Navigation uses explicit executable arguments
+  when provided; otherwise it searches PATH and common install locations again.
+
+This applies to texbridge's own application state. uv still manages its tool
+environment and installation cache, and Python may create bytecode caches.
+
 ## 🔄 How it works
 
 ```mermaid
@@ -18,7 +31,7 @@ flowchart TB
 
     subgraph inverse ["PDF → SOURCE"]
         direction LR
-        S2["SumatraPDF"] -->|"Double-click"| I("texbridgew inverse")
+        S2["SumatraPDF"] -->|"Double-click"| I("texbridge inverse")
         I -->|"Open source at line"| V2["VS Code"]
     end
 
@@ -80,11 +93,11 @@ Merge these fields into your existing settings object. Replace
   "latex-workshop.view.pdf.viewer": "external",
   "latex-workshop.view.pdf.external.viewer.command": "path/to/texbridge.exe",
   "latex-workshop.view.pdf.external.viewer.args": [
-    "view", "--pdf", "%PDF%"
+    "view", "--gui", "--pdf", "%PDF%"
   ],
   "latex-workshop.view.pdf.external.synctex.command": "path/to/texbridge.exe",
   "latex-workshop.view.pdf.external.synctex.args": [
-    "forward", "--source", "%TEX%", "--line", "%LINE%", "--pdf", "%PDF%"
+    "forward", "--gui", "--source", "%TEX%", "--line", "%LINE%", "--pdf", "%PDF%"
   ]
 }
 ```
@@ -94,14 +107,14 @@ settings can override user settings, so keep matching entries consistent.
 
 ### 3. SumatraPDF: `SumatraPDF-settings.txt`
 
-Add or update these top-level entries. Replace `path/to/texbridgew.exe` with
-your installed windowless executable's absolute path:
+Add or update these top-level entries. Replace `path/to/texbridge.exe` with
+your installed executable's absolute path:
 
 ```text
 EnableTeXEnhancements = true
 ReuseInstance = true
 ReloadModifiedDocuments = true
-InverseSearchCmdLine = "path/to/texbridgew.exe" inverse --source "%f" --line %l
+InverseSearchCmdLine = "path/to/texbridge.exe" inverse --gui --source "%f" --line %l
 ```
 
 Keep `%PDF%`, `%TEX%`, `%LINE%`, `%f`, and `%l` exactly as shown: the applications
@@ -109,9 +122,17 @@ substitute them when you navigate. The examples use automatic app discovery;
 `texbridge config` instead prints ready-to-copy settings with discovered app
 paths pinned through `--sumatra` and `--code` for predictable GUI launches.
 
-The generated inverse command uses `texbridgew.exe` to avoid console flashes;
-errors appear in a dialog. If installation paths change, rerun `config` and
-update your settings manually.
+Both applications use the same `texbridge.exe` entry point. `--gui` displays
+output and errors in a dialog; successful navigation is silent. Omit it for
+terminal output. The executable uses the Windows GUI subsystem, so launching
+it from SumatraPDF does not create a console window. Without `--gui`, it uses
+inherited output streams or attaches to the calling terminal; it never creates
+a new console. If no terminal or redirected output exists, it uses a dialog.
+If installation paths change, rerun `config` and update your settings manually.
+
+After upgrading from an older console launcher, reinstall the tool and rerun
+`texbridge config`. Existing executable launchers must be replaced for this fix
+to take effect; changing the Python source alone is not enough.
 
 ### 4. Build and verify
 
@@ -142,6 +163,8 @@ forward command starts it. `doctor` alone does not confirm either navigation pat
 
 Use `--help` for options. Add `--dry-run` to `view`, `forward`, or `inverse`
 to inspect arguments without launching an app.
+Use `--gui` with any command to display its output in a dialog instead of the
+terminal. It can appear before or after the subcommand.
 
 ## 🔎 Known limits
 

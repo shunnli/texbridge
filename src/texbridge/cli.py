@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 from . import __version__
+from .terminal import connect_output
 
 
 class BridgeError(Exception):
@@ -102,22 +103,20 @@ def bridge_entry() -> Path:
 
 
 def configuration(bridge: Path, code: Path, sumatra: Path) -> tuple[dict, str]:
-    windowless = bridge.with_name("texbridgew.exe")
-    inverse_entry = windowless if windowless.is_file() else bridge
     settings = {
         "latex-workshop.view.pdf.viewer": "external",
         "latex-workshop.view.pdf.external.viewer.command": str(bridge),
         "latex-workshop.view.pdf.external.viewer.args": [
-            "view", "--sumatra", str(sumatra), "--pdf", "%PDF%",
+            "view", "--gui", "--sumatra", str(sumatra), "--pdf", "%PDF%",
         ],
         "latex-workshop.view.pdf.external.synctex.command": str(bridge),
         "latex-workshop.view.pdf.external.synctex.args": [
-            "forward", "--sumatra", str(sumatra), "--source", "%TEX%",
+            "forward", "--gui", "--sumatra", str(sumatra), "--source", "%TEX%",
             "--line", "%LINE%", "--pdf", "%PDF%",
         ],
     }
     # %f must always be quoted, even though the literal placeholder has no spaces.
-    prefix = subprocess.list2cmdline([str(inverse_entry), "inverse", "--code", str(code)])
+    prefix = subprocess.list2cmdline([str(bridge), "inverse", "--gui", "--code", str(code)])
     inverse = prefix + ' --source "%f" --line %l'
     return settings, inverse
 
@@ -146,6 +145,7 @@ def launch(argv: list[str], *, dry_run: bool) -> None:
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="VS Code / SumatraPDF SyncTeX bridge; never edits application settings", allow_abbrev=False)
     root.add_argument("--version", action="version", version=__version__)
+    root.add_argument("--gui", action="store_true", help="Show output and errors in a dialog instead of the terminal")
     commands = root.add_subparsers(dest="command", required=True)
     for name, help_text in (
         ("config", "Print manual configuration instructions"),
@@ -155,6 +155,8 @@ def parser() -> argparse.ArgumentParser:
         ("doctor", "Check application paths and synchronization files (read-only)"),
     ):
         command = commands.add_parser(name, help=help_text, allow_abbrev=False)
+        command.add_argument("--gui", action="store_true", default=argparse.SUPPRESS,
+                             help="Show output and errors in a dialog instead of the terminal")
         if name in {"config", "inverse", "doctor"}:
             command.add_argument("--code", help="Full path to Code.exe")
         if name in {"config", "view", "forward", "doctor"}:
@@ -241,7 +243,7 @@ def run(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def console_main(argv: list[str]) -> int:
     args = parser().parse_args(argv)
     try:
         return run(args)
@@ -250,20 +252,29 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
-def gui_main() -> int:
-    """Windowless inverse entry; show actionable errors instead of losing stderr."""
+def show_dialog(message: str, status: int) -> None:
+    if os.name == "nt":
+        ctypes.windll.user32.MessageBoxW(None, message, "texbridge", 0x10 if status else 0x40)
+    elif sys.stderr is not None:
+        print(message, file=sys.stderr)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """One entry point with terminal output by default and optional dialogs."""
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    # Select output routing before parsing so argument errors are visible too.
+    if "--gui" not in arguments and connect_output():
+        return console_main(arguments)
+
     import io
     from contextlib import redirect_stderr, redirect_stdout
 
     output = io.StringIO()
     with redirect_stdout(output), redirect_stderr(output):
         try:
-            status = main()
+            status = console_main(arguments)
         except SystemExit as exc:
             status = int(exc.code or 0)
     if output.getvalue():
-        if os.name == "nt":
-            ctypes.windll.user32.MessageBoxW(None, output.getvalue(), "texbridge", 0x10 if status else 0x40)
-        elif sys.stderr is not None:
-            print(output.getvalue(), file=sys.stderr)
+        show_dialog(output.getvalue(), status)
     return status

@@ -204,9 +204,6 @@ behavior.
   This can open the wrong PDF or cause forward search to fail.
 - Project-window matching follows VS Code's behavior; exact
   routing to an existing multi-root workspace is not guaranteed.
-- The reported **“Sumatra must be opened independently”** issue is not yet
-  verified as fixed. Test both an independently opened Sumatra and one started
-  through VS Code. A successful process launch does not prove navigation worked.
 
 ## 🛠️ Development
 
